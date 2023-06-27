@@ -1,0 +1,30 @@
+mcga - Make Cloudflare Great Again!
+
+how to build:
+
+go build -ldflags "-s -w -X main.version=$(git describe --tags --long --always)" -trimpath -o mcga
+
+how to use:
+
+mcga will drop unreachable IP (tested by icmp response)
+
+# normal
+./mcga cloudflare.com
+# custom udp dns server
+./mcga cloudflare.com -u 223.5.5.5
+# custom udp dns server and port
+./mcga cloudflare.com -u dns.opendns.com -p 5353
+# wirte reachable IPs to hosts file
+./mcga cloudflare.com 2>&1 > hosts
+
+options:
+
+-d domain name      domain name
+-u udp server       dns server, use /etc/resolv.conf default
+-p port             dns port, use 53 default
+
+TODO:
+
+Batch update hosts:
+    a. read servername from hosts file
+    b. keep servername and replace ip
