@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-ping/ping"
@@ -141,19 +143,43 @@ func main() {
 
 		if *mosdnsStyle {
 			// reserve the ip and domain, write mosdnsStyleHosts to hfPath+".mosdns" file
+			oldMosdnsHosts := ""
+			oldMosdnsFile, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE, 0644)
+			data, _ := ioutil.ReadAll(oldMosdnsFile)
+			oldMosdnsFile.Close()
+			oldMosdnsHosts = string(data)
+
+			oldMosdnsHostsLines := strings.Split(oldMosdnsHosts, "\n")
 			hfls := hosts.GetHostFileLines()
-			var mosdnsStyleHosts string
+			mosdnsStyleHosts := ""
+			updated := false
 			for _, hfl := range *hfls {
 				for _, hostname := range hfl.Hostnames {
 					if hostname == *domain {
-						mosdnsStyleHosts += fmt.Sprintf("%s\t%s\n", hostname, hfl.Address)
+						for _, line := range oldMosdnsHostsLines {
+							if updated {
+								continue
+							}
+							line = strings.TrimSpace(line)
+							if strings.HasPrefix(line, *domain) {
+								mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
+								updated = true
+							} else {
+								if line != "" {
+									mosdnsStyleHosts += line + "\n"
+								} else {
+									mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
+									updated = true
+								}
+							}
+						}
 					}
 				}
 			}
 
 			// overwrite the file
-			file, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-			file.WriteString(mosdnsStyleHosts)
+			writeFile, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+			writeFile.WriteString(mosdnsStyleHosts)
 		}
 	}
 }
