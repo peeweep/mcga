@@ -43,6 +43,7 @@ func main() {
 	udpServer := flag.String("s", "", "dns server (use /etc/resolv.conf if not specified)")
 	udpPort := flag.Int("p", 53, "dns udp port")
 	update := flag.Bool("u", true, "update hosts file")
+	mosdnsStyle := flag.Bool("m", false, "save to hosts.mosdns as mosdns style")
 	hostsFile := flag.String("f", "hosts", "output hosts file")
 	version := flag.Bool("v", false, "show version")
 
@@ -136,9 +137,23 @@ func main() {
 	fmt.Print(hfData)
 
 	if *update {
-		err := hosts.Save()
-		if err != nil {
-			return
+		hosts.Save()
+
+		if *mosdnsStyle {
+			// reserve the ip and domain, write mosdnsStyleHosts to hfPath+".mosdns" file
+			hfls := hosts.GetHostFileLines()
+			var mosdnsStyleHosts string
+			for _, hfl := range *hfls {
+				for _, hostname := range hfl.Hostnames {
+					if hostname == *domain {
+						mosdnsStyleHosts += fmt.Sprintf("%s\t%s\n", hostname, hfl.Address)
+					}
+				}
+			}
+
+			// overwrite the file
+			file, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+			file.WriteString(mosdnsStyleHosts)
 		}
 	}
 }

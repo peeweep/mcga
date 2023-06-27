@@ -6,6 +6,9 @@ go build -ldflags "-s -w -X main.Version=$(git describe --tags --long --always)"
 
 how to use:
 
+# https://github.com/go-ping/ping#supported-operating-systems :
+sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
+
 mcga will drop unreachable IP (tested by icmp response)
 
 # normal
@@ -16,13 +19,15 @@ mcga will drop unreachable IP (tested by icmp response)
 ./mcga cloudflare.com -s dns.opendns.com -p 5353
 # custom hosts file location
 ./mcga -d cloudflare.com -s dns.opendns.com -p 5353 -f my.hosts
-
+# save mosdns style hosts to hosts.mosdns (domain address)
+./mcga -d cloudflare.com -s dns.opendns.com -p 5353 -f my.hosts -m true
 
 options:
   -d string
         domain name
   -f string
         output hosts file (default "hosts")
+  -m    save to hosts.mosdns as mosdns style
   -p int
         dns udp port (default 53)
   -s string
