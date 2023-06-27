@@ -142,12 +142,11 @@ func main() {
 		hosts.Save()
 
 		if *mosdnsStyle {
-			// reserve the ip and domain, write mosdnsStyleHosts to hfPath+".mosdns" file
-			oldMosdnsHosts := ""
+			// write mosdnsStyleHosts (domain ip) to hfPath+".mosdns" file
 			oldMosdnsFile, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE, 0644)
 			data, _ := ioutil.ReadAll(oldMosdnsFile)
 			oldMosdnsFile.Close()
-			oldMosdnsHosts = string(data)
+			oldMosdnsHosts := string(data)
 
 			oldMosdnsHostsLines := strings.Split(oldMosdnsHosts, "\n")
 			hfls := hosts.GetHostFileLines()
@@ -157,19 +156,25 @@ func main() {
 				for _, hostname := range hfl.Hostnames {
 					if hostname == *domain {
 						for _, line := range oldMosdnsHostsLines {
-							if updated {
-								continue
-							}
+
 							line = strings.TrimSpace(line)
 							if strings.HasPrefix(line, *domain) {
-								mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
-								updated = true
+								if updated {
+									continue
+								} else {
+									mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
+									updated = true
+								}
 							} else {
 								if line != "" {
 									mosdnsStyleHosts += line + "\n"
 								} else {
-									mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
-									updated = true
+									if updated {
+										continue
+									} else {
+										mosdnsStyleHosts += fmt.Sprintf("%s %s\n", hostname, hfl.Address)
+										updated = true
+									}
 								}
 							}
 						}
