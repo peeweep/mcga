@@ -1,0 +1,10 @@
+[Unit]
+Description=update mcga every minutes
+Requires=mcga.service
+
+[Timer]
+Unit=mcga.service
+OnCalendar=*-*-* *:*:00
+
+[Install]
+WantedBy=multi-user.target

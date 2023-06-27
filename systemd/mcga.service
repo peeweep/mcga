@@ -1,0 +1,9 @@
+[Unit]
+Description=update mcga
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mcga.sh
+
+[Install]
+WantedBy=multi-user.target
