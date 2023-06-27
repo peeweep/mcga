@@ -14,12 +14,7 @@ import (
 	"github.com/txn2/txeh"
 )
 
-type DNSSERVER struct {
-	server string
-	port   int
-}
-
-func check_ping(ip string) (icmp_reachable bool) {
+func checkICMP(ip string) (icmpReachable bool) {
 
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
@@ -71,12 +66,12 @@ func main() {
 		return
 	}
 
-	var dns_server string
+	var server string
 	if *udpServer != "" {
-		dns_server = *udpServer
+		server = *udpServer
 	} else {
 		config, _ := dns.ClientConfigFromFile("/etc/resolv.conf")
-		dns_server = config.Servers[0]
+		server = config.Servers[0]
 	}
 
 	var port int
@@ -84,13 +79,13 @@ func main() {
 		port = *udpPort
 	}
 
-	dnsc := new(dns.Client)
+	dnsClient := new(dns.Client)
 
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(*domain), dns.TypeA)
-	m.RecursionDesired = true
+	dnsMsg := new(dns.Msg)
+	dnsMsg.SetQuestion(dns.Fqdn(*domain), dns.TypeA)
+	dnsMsg.RecursionDesired = true
 
-	r, _, err := dnsc.Exchange(m, net.JoinHostPort(dns_server, strconv.Itoa(port)))
+	r, _, err := dnsClient.Exchange(dnsMsg, net.JoinHostPort(server, strconv.Itoa(port)))
 	if r == nil {
 		log.Fatalln(err.Error())
 	}
@@ -110,7 +105,12 @@ func main() {
 			log.Fatalf(" *** failed to open file %s\n", err)
 			return
 		}
-		defer file.Close()
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				log.Fatalf(" *** failed to open/close file %s\n", err)
+			}
+		}(file)
 	}
 	hosts, err := txeh.NewHosts(&txeh.HostsConfig{
 		ReadFilePath:  hfPath,
@@ -126,16 +126,19 @@ func main() {
 		}
 		ip := a.(*dns.A).A.String()
 
-		if check_ping(ip) {
+		if checkICMP(ip) {
 			hosts.AddHost(ip, *domain)
 			break
 		}
 	}
 
 	hfData := hosts.RenderHostsFile()
-	fmt.Println(hfData)
+	fmt.Print(hfData)
 
 	if *update {
-		hosts.Save()
+		err := hosts.Save()
+		if err != nil {
+			return
+		}
 	}
 }
