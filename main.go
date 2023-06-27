@@ -45,12 +45,25 @@ func check_ping(ip string) (icmp_reachable bool) {
 	return false
 }
 
+var Version string
+
 func main() {
 	domain := flag.String("d", "", "domain name")
 	udpServer := flag.String("u", "", "dns server (use /etc/resolv.conf if not specified)")
 	udpPort := flag.Int("p", 53, "dns udp port")
+	version := flag.Bool("v", false, "show version")
 
 	flag.Parse()
+
+	if *version {
+
+		if Version == "" {
+			fmt.Printf("Version: Unknown\n")
+		} else {
+			fmt.Printf("Version: %v\n", Version)
+		}
+		return
+	}
 
 	if *domain == "" && flag.NArg() > 0 {
 		*domain = flag.Arg(0)
