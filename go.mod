@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/go-ping/ping v1.1.0
 	github.com/miekg/dns v1.1.55
+	github.com/txn2/txeh v1.4.0
 )
 
 require (

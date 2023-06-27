@@ -11,12 +11,8 @@ import (
 
 	"github.com/go-ping/ping"
 	"github.com/miekg/dns"
+	"github.com/txn2/txeh"
 )
-
-type HOSTS struct {
-	domain string
-	ip     string
-}
 
 type DNSSERVER struct {
 	server string
@@ -49,14 +45,15 @@ var Version string
 
 func main() {
 	domain := flag.String("d", "", "domain name")
-	udpServer := flag.String("u", "", "dns server (use /etc/resolv.conf if not specified)")
+	udpServer := flag.String("s", "", "dns server (use /etc/resolv.conf if not specified)")
 	udpPort := flag.Int("p", 53, "dns udp port")
+	update := flag.Bool("u", true, "update hosts file")
+	hostsFile := flag.String("f", "hosts", "output hosts file")
 	version := flag.Bool("v", false, "show version")
 
 	flag.Parse()
 
 	if *version {
-
 		if Version == "" {
 			fmt.Printf("Version: Unknown\n")
 		} else {
@@ -87,39 +84,58 @@ func main() {
 		port = *udpPort
 	}
 
-	dnsServer := DNSSERVER{
-		server: dns_server,
-		port:   port,
-	}
-
 	dnsc := new(dns.Client)
 
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(*domain), dns.TypeA)
 	m.RecursionDesired = true
 
-	r, _, err := dnsc.Exchange(m, net.JoinHostPort(dnsServer.server, strconv.Itoa(dnsServer.port)))
+	r, _, err := dnsc.Exchange(m, net.JoinHostPort(dns_server, strconv.Itoa(port)))
 	if r == nil {
-		log.Fatalf("*** error: %s\n", err.Error())
+		log.Fatalln(err.Error())
 	}
 
 	if r.Rcode != dns.RcodeSuccess {
-		log.Fatalf(" *** invalid answer name %s after MX query for %s\n", os.Args[1], os.Args[1])
+		log.Fatalf(" *** invalid answer name %s\n", *domain)
 	}
-	hosts := []HOSTS{}
+
+	var hfPath string
+	if *hostsFile != "" {
+		hfPath = *hostsFile
+	}
+
+	if *update {
+		file, err := os.OpenFile(hfPath, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			log.Fatalf(" *** failed to open file %s\n", err)
+			return
+		}
+		defer file.Close()
+	}
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{
+		ReadFilePath:  hfPath,
+		WriteFilePath: hfPath,
+	})
+
+	if err != nil {
+		panic(err)
+	}
 	for _, a := range r.Answer {
-		host := HOSTS{
-			domain: *domain,
-			ip:     a.(*dns.A).A.String(),
+		if a.Header().Rrtype != dns.TypeA {
+			continue
 		}
-		// check icmp ping reachable
-		if check_ping(host.ip) {
-			hosts = append(hosts, host)
+		ip := a.(*dns.A).A.String()
+
+		if check_ping(ip) {
+			hosts.AddHost(ip, *domain)
+			break
 		}
 	}
 
-	for _, host := range hosts {
-		fmt.Printf("%v\t%v\n", host.domain, host.ip)
-	}
+	hfData := hosts.RenderHostsFile()
+	fmt.Println(hfData)
 
+	if *update {
+		hosts.Save()
+	}
 }
