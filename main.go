@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -15,6 +15,45 @@ import (
 	"github.com/miekg/dns"
 	"github.com/txn2/txeh"
 )
+
+func getAnswer(domain string, dnsserverName string, dnsserverPort string) (ans []dns.RR) {
+
+	dnsClient := new(dns.Client)
+
+	dnsMsg := new(dns.Msg)
+	dnsMsg.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	dnsMsg.RecursionDesired = true
+
+	r, _, err := dnsClient.Exchange(dnsMsg, net.JoinHostPort(dnsserverName, dnsserverPort))
+	if r == nil {
+		log.Fatalln(err.Error())
+	}
+
+	if r.Rcode != dns.RcodeSuccess {
+		log.Fatalf(" *** invalid answer name %s\n", domain)
+	}
+	return r.Answer
+}
+
+func updateHosts(domain string, answers []dns.RR, hosts *txeh.Hosts, fallbackDomain string, dnsserverName string, dnsserverPort string) {
+	for index, a := range answers {
+		if a.Header().Rrtype != dns.TypeA {
+			continue
+		}
+		ip := a.(*dns.A).A.String()
+
+		if checkICMP(ip) {
+			hosts.AddHost(ip, domain)
+			break
+		}
+		if index == len(answers)-1 && !checkICMP(ip) && fallbackDomain != "" {
+			// fallback only loop once
+			fallbackAnswers := getAnswer(fallbackDomain, dnsserverName, dnsserverPort)
+			updateHosts(domain, fallbackAnswers, hosts, "", dnsserverName, dnsserverPort)
+			//hosts.AddHost(*cfip, domainname)
+		}
+	}
+}
 
 func checkICMP(ip string) (icmpReachable bool) {
 
@@ -47,6 +86,7 @@ func main() {
 	update := flag.Bool("u", true, "update hosts file")
 	mosdnsStyle := flag.Bool("m", false, "save to hosts.mosdns as mosdns style")
 	hostsFile := flag.String("f", "hosts", "output hosts file")
+	fallbackDomain := flag.String("b", "cloudflare.com", "fallback domain when all ips are unreachable")
 	version := flag.Bool("v", false, "show version")
 
 	flag.Parse()
@@ -82,21 +122,6 @@ func main() {
 		port = *udpPort
 	}
 
-	dnsClient := new(dns.Client)
-
-	dnsMsg := new(dns.Msg)
-	dnsMsg.SetQuestion(dns.Fqdn(*domain), dns.TypeA)
-	dnsMsg.RecursionDesired = true
-
-	r, _, err := dnsClient.Exchange(dnsMsg, net.JoinHostPort(server, strconv.Itoa(port)))
-	if r == nil {
-		log.Fatalln(err.Error())
-	}
-
-	if r.Rcode != dns.RcodeSuccess {
-		log.Fatalf(" *** invalid answer name %s\n", *domain)
-	}
-
 	var hfPath string
 	if *hostsFile != "" {
 		hfPath = *hostsFile
@@ -123,17 +148,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	for _, a := range r.Answer {
-		if a.Header().Rrtype != dns.TypeA {
-			continue
-		}
-		ip := a.(*dns.A).A.String()
 
-		if checkICMP(ip) {
-			hosts.AddHost(ip, *domain)
-			break
-		}
-	}
+	// get answers
+	answers := getAnswer(*domain, server, strconv.Itoa(port))
+
+	// update hosts
+	updateHosts(*domain, answers, hosts, *fallbackDomain, server, strconv.Itoa(port))
 
 	hfData := hosts.RenderHostsFile()
 	fmt.Print(hfData)
@@ -144,7 +164,7 @@ func main() {
 		if *mosdnsStyle {
 			// write mosdnsStyleHosts (domain ip) to hfPath+".mosdns" file
 			oldMosdnsFile, _ := os.OpenFile(hfPath+".mosdns", os.O_RDWR|os.O_CREATE, 0644)
-			data, _ := ioutil.ReadAll(oldMosdnsFile)
+			data, _ := io.ReadAll(oldMosdnsFile)
 			oldMosdnsFile.Close()
 			oldMosdnsHosts := string(data)
 
