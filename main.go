@@ -16,6 +16,15 @@ import (
 	"github.com/txn2/txeh"
 )
 
+func inc(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
+}
+
 func getAnswer(domain string, dnsserverName string, dnsserverPort string) (ans []dns.RR) {
 
 	dnsClient := new(dns.Client)
@@ -35,7 +44,7 @@ func getAnswer(domain string, dnsserverName string, dnsserverPort string) (ans [
 	return r.Answer
 }
 
-func updateHosts(domain string, answers []dns.RR, hosts *txeh.Hosts, fallbackDomain string, dnsserverName string, dnsserverPort string) {
+func updateHosts(domain string, answers []dns.RR, hosts *txeh.Hosts, fallbackDomain string, dnsserverName string, dnsserverPort string, rangeCIDR bool) {
 	for index, a := range answers {
 		if a.Header().Rrtype != dns.TypeA {
 			continue
@@ -44,13 +53,38 @@ func updateHosts(domain string, answers []dns.RR, hosts *txeh.Hosts, fallbackDom
 
 		if checkICMP(ip) {
 			hosts.AddHost(ip, domain)
-			break
+			return
 		}
-		if index == len(answers)-1 && !checkICMP(ip) && fallbackDomain != "" {
-			// fallback only loop once
-			fallbackAnswers := getAnswer(fallbackDomain, dnsserverName, dnsserverPort)
-			updateHosts(domain, fallbackAnswers, hosts, "", dnsserverName, dnsserverPort)
-			//hosts.AddHost(*cfip, domainname)
+		if index == len(answers)-1 && !checkICMP(ip) {
+			if fallbackDomain != "" {
+				// fallback only loop once
+				fallbackAnswers := getAnswer(fallbackDomain, dnsserverName, dnsserverPort)
+				updateHosts(domain, fallbackAnswers, hosts, "", dnsserverName, dnsserverPort, rangeCIDR)
+				if rangeCIDR {
+					fmt.Println("-b and -l both exist, ignore -l")
+				}
+				return
+			}
+
+			if rangeCIDR {
+
+				mask := net.CIDRMask(24, 32) // subnet 24
+				ipNet := &net.IPNet{
+					IP:   net.ParseIP(ip).Mask(mask),
+					Mask: mask,
+				}
+
+				for ip := ipNet.IP.Mask(ipNet.Mask); ipNet.Contains(ip); inc(ip) {
+					// ip range 1-254
+					if ip[3] == 0 || ip[3] == 255 {
+						continue
+					}
+					if checkICMP(ip.String()) {
+						hosts.AddHost(ip.String(), domain)
+						return
+					}
+				}
+			}
 		}
 	}
 }
@@ -85,8 +119,9 @@ func main() {
 	udpPort := flag.Int("p", 53, "dns udp port")
 	update := flag.Bool("u", true, "update hosts file")
 	mosdnsStyle := flag.Bool("m", false, "save to hosts.mosdns as mosdns style")
+	loopCIDR := flag.Bool("l", false, "loop /24 cidr (1-254)")
 	hostsFile := flag.String("f", "hosts", "output hosts file")
-	fallbackDomain := flag.String("b", "cloudflare.com", "fallback domain when all ips are unreachable")
+	fallbackDomain := flag.String("b", "", "fallback domain when all ips are unreachable")
 	version := flag.Bool("v", false, "show version")
 
 	flag.Parse()
@@ -153,7 +188,7 @@ func main() {
 	answers := getAnswer(*domain, server, strconv.Itoa(port))
 
 	// update hosts
-	updateHosts(*domain, answers, hosts, *fallbackDomain, server, strconv.Itoa(port))
+	updateHosts(*domain, answers, hosts, *fallbackDomain, server, strconv.Itoa(port), *loopCIDR)
 
 	hfData := hosts.RenderHostsFile()
 	fmt.Print(hfData)
