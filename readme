@@ -21,8 +21,12 @@ mcga will drop unreachable IP (tested by icmp response)
 ./mcga -d cloudflare.com -s dns.opendns.com -p 5353 -f my.hosts
 # save mosdns style hosts to hosts.mosdns (domain address)
 ./mcga -d cloudflare.com -s dns.opendns.com -p 5353 -f my.hosts -m true
+# use fallback domain
+./mcga -d cloudflare.com -s dns.opendns.com -p 5353 -f my.hosts -m true -b cloudflare-dns.com
 
 options:
+  -b string
+        fallback domain when all ips are unreachable (default "cloudflare.com")
   -d string
         domain name
   -f string
